@@ -218,8 +218,8 @@ final class SelectorController {
             return
         }
         switch e.keyCode {
-        case 123: closeMenu(); move(-1)                                   // ←
-        case 124: closeMenu(); move(1)                                    // →
+        case 123: closeMenu(); move(-1, repeating: e.isARepeat)           // ←
+        case 124: closeMenu(); move(1, repeating: e.isARepeat)            // →
         case 125: model.menuOpen ? stepMenu(1) : openMenu()               // ↓
         case 126: if model.menuOpen { stepMenu(-1) }                      // ↑
         case 36, 76: model.menuOpen ? runMenu(model.menuIndex) : apply(.standard) // ↩
@@ -251,18 +251,20 @@ final class SelectorController {
         scrollAccum += d
         if abs(scrollAccum) > 38, Date().timeIntervalSince(lastScrollStep) > 0.11 {
             closeMenu()
-            move(scrollAccum > 0 ? -1 : 1)
+            move(scrollAccum > 0 ? -1 : 1, repeating: Date().timeIntervalSince(lastScrollStep) < 0.3)
             scrollAccum = 0
             lastScrollStep = Date()
         }
     }
 
-    private func move(_ dir: Int) {
+    private func move(_ dir: Int, repeating: Bool = false) {
         guard canInteract, !model.items.isEmpty, !model.spinning else { return }
         let target = model.position + dir
-        if !model.wraps, !model.items.indices.contains(target) { return bump(dir) }
-        model.settled = false
-        withAnimation(Motion.spring(0.46, 0.86)) { model.position = target }
+        if !model.wraps, !model.items.indices.contains(target) {
+            return repeating ? () : bump(dir)
+        }
+        if model.settled { model.settled = false }
+        withAnimation(repeating ? Motion.spring(0.26, 1) : Motion.spring(0.46, 0.86)) { model.position = target }
     }
 
     private func jump(toIndex i: Int) {

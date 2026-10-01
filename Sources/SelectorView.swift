@@ -123,15 +123,8 @@ private struct CardVideo: NSViewRepresentable {
 }
 
 private struct Placeholder: View {
-    @State private var sweep = false
-
     var body: some View {
-        LinearGradient(colors: [Color(white: 0.10), Color(white: 0.16), Color(white: 0.10)],
-                       startPoint: sweep ? .topLeading : .bottomTrailing,
-                       endPoint: sweep ? .bottomTrailing : .topLeading)
-            .onAppear {
-                withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { sweep = true }
-            }
+        LinearGradient(colors: [Color(white: 0.16), Color(white: 0.09)], startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 }
 
@@ -145,7 +138,9 @@ private struct CardView: View {
         let shape = Slant(skew: l.skew)
         let extra = l.w * l.margin
         ZStack {
-            Placeholder()
+            if image == nil {
+                Placeholder().transition(.opacity)
+            }
             if let image {
                 Image(nsImage: image)
                     .resizable()
@@ -175,8 +170,13 @@ private struct CardView: View {
             }
         }
         .overlay(shape.stroke(Color.white.opacity(l.border), lineWidth: 4.5))
-        .compositingGroup()
-        .shadow(color: .black.opacity(0.55 * l.shadow), radius: 26 * l.shadow, x: 0, y: 16 * l.shadow)
+        .background {
+            if l.shadow > 0.01 {
+                shape.fill(Color.black.opacity(0.5 * l.shadow))
+                    .blur(radius: 22)
+                    .offset(y: 16)
+            }
+        }
         .contentShape(shape)
     }
 }
@@ -264,7 +264,7 @@ struct SelectorView: View {
             blur: model.spinning ? 2.5 : 0,
             dim: Double(min(a, 3)) * 0.13,
             border: isSel ? 1 : 0,
-            shadow: 1,
+            shadow: a <= 1 ? 1 : 0,
             margin: 0.16 * min(a, 1),
             parallax: min(max(-rel * 0.45, -1), 1),
             rotation: 0,
@@ -448,7 +448,7 @@ struct SelectorView: View {
             Text(model.query.isEmpty ? " " : model.query)
                 .font(.system(size: 17, weight: .medium))
                 .lineLimit(1)
-            Caret()
+            if shown { Caret() }
             if !model.items.isEmpty || !model.query.isEmpty {
                 Text("\(model.items.count)")
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
