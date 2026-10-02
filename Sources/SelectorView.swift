@@ -25,7 +25,7 @@ final class SelectorModel: ObservableObject {
     @Published var query = ""
     @Published var libraryEmpty = false
     @Published var fullURL: URL?
-    @Published var fullImage: NSImage?
+    @Published var fullImage: CGImage?
     @Published var trashing: URL?
     @Published var badge: String?
     @Published var reduced = false
@@ -130,7 +130,7 @@ private struct Placeholder: View {
 
 private struct CardView: View {
     let item: Wallpaper
-    let image: NSImage?
+    let image: CGImage?
     let l: CardLayout
     let playVideo: Bool
 
@@ -142,7 +142,7 @@ private struct CardView: View {
                 Placeholder().transition(.opacity)
             }
             if let image {
-                Image(nsImage: image)
+                Image(decorative: image, scale: 1)
                     .resizable()
                     .interpolation(.high)
                     .aspectRatio(contentMode: .fill)
@@ -225,7 +225,7 @@ struct SelectorView: View {
                     menu(size)
                 }
                 if model.reduced, let image = model.fullImage {
-                    Image(nsImage: image)
+                    Image(decorative: image, scale: 1)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: size.width, height: size.height)

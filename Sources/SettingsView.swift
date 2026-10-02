@@ -53,6 +53,15 @@ final class SettingsWindowController {
         ])
         window.contentView = effect
         self.window = window
+        // Free the window (and the previews its header shows) once it's closed.
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
+            DispatchQueue.main.async {
+                window.contentView = nil
+                self?.window = nil
+                ThumbnailCache.shared.purge()
+                releaseFreedMemory()
+            }
+        }
         return window
     }
 }
@@ -371,7 +380,7 @@ private struct MiniCarousel: View {
         return ZStack {
             LinearGradient(colors: [Color(white: 0.18), Color(white: 0.1)], startPoint: .top, endPoint: .bottom)
             if let item, let image = thumbs.image(for: item) {
-                Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
+                Image(decorative: image, scale: 1).resizable().aspectRatio(contentMode: .fill)
             }
         }
         .frame(width: h * 0.84, height: h)

@@ -61,7 +61,7 @@ enum DesktopCrossfade {
             let view = NSView(frame: NSRect(origin: .zero, size: screen.frame.size))
             view.wantsLayer = true
             view.layer?.contentsGravity = .resizeAspectFill
-            view.layer?.contents = image.cgImage(forProposedRect: nil, context: nil, hints: nil)
+            view.layer?.contents = image
             window.contentView = view
             window.orderFront(nil)
             windows.append(window)
@@ -100,7 +100,10 @@ final class PlayerView: NSView {
         layer?.addSublayer(playerLayer)
         player.isMuted = true
         player.preventsDisplaySleepDuringVideoPlayback = false
-        looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(url: url))
+        // Local files don't need a deep read-ahead buffer; this keeps a looping 4K video's memory low.
+        let item = AVPlayerItem(url: url)
+        item.preferredForwardBufferDuration = 2
+        looper = AVPlayerLooper(player: player, templateItem: item)
         readyObservation = playerLayer.observe(\.isReadyForDisplay, options: [.new]) { [weak self] layer, _ in
             guard layer.isReadyForDisplay else { return }
             DispatchQueue.main.async {

@@ -20,6 +20,7 @@ final class SelectorController {
     private var scrollAccum: CGFloat = 0
     private var lastScrollStep = Date.distantPast
     private var busy = false
+    private var lastSelected: URL?
     private var subs = Set<AnyCancellable>()
 
     var isVisible: Bool { panel?.isVisible ?? false }
@@ -28,7 +29,12 @@ final class SelectorController {
         self.store = store
         store.$items
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.rebuild(animated: self?.isVisible ?? false) }
+            .sink { [weak self] items in
+                guard let self else { return }
+                self.rebuild(animated: self.isVisible)
+                if let screen = NSScreen.main, !self.isVisible { self.thumbs.configure(for: screen) }
+                self.thumbs.warmDisk(items)
+            }
             .store(in: &subs)
         model.$position
             .receive(on: DispatchQueue.main)
@@ -52,11 +58,11 @@ final class SelectorController {
     // MARK: Show / hide
 
     func show() {
-        guard !busy else { return }
+        guard !busy, !isVisible else { return }
         let screen = NSScreen.withMouse
         let panel = self.panel ?? makePanel()
         panel.setFrame(screen.frame, display: false)
-        thumbs.shortSide = (screen.pixelSize.height * 0.48).rounded()
+        thumbs.configure(for: screen)
 
         withoutAnimation {
             model.phase = .browsing
@@ -70,16 +76,56 @@ final class SelectorController {
             model.spinning = false
             model.reduced = Motion.reduced
             rebuild(animated: false)
-            if let i = store.index(ofCurrentWallpaperOn: screen) { model.position = i }
+            if let i = store.index(ofCurrentWallpaperOn: screen) ?? lastSelected.flatMap({ url in model.items.firstIndex { $0.url == url } }) {
+                model.position = i
+            }
         }
         store.refresh()
 
         panel.alphaValue = 1
         panel.makeKeyAndOrderFront(nil)
         installMonitors()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
-            self?.model.appeared = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + Motion.t(0.5)) { self?.model.settled = true }
+
+        // Fly the cards in once their previews are decoded (from the disk cache this takes a few
+        // milliseconds), so they never appear blank; give up waiting after a moment either way.
+        var started = false
+        let start = { [weak self] in
+            guard let self, !started, self.isVisible else { return }
+            started = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
+                self.model.appeared = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + Motion.t(0.5)) { self.model.settled = true }
+            }
+        }
+        let visible = model.entries.filter { abs($0.rel) <= 4 }.map(\.item)
+        thumbs.prefetch(visible, done: start)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: start)
+    }
+
+    /// Everything the selector holds is released while it's closed: every card and its layers,
+    /// the previews, the full-size image and the window's drawing buffer. The (empty) window itself
+    /// is reused — rebuilding SwiftUI hosting views each time leaks them inside AppKit.
+    private func teardown() {
+        guard let panel else { return }
+        lastSelected = model.selected?.url
+        panel.orderOut(nil)
+        // A hidden window still owns a backing buffer the size of the screen; shrink it away.
+        panel.setFrame(NSRect(x: 0, y: 0, width: 1, height: 1), display: false)
+        withoutAnimation {
+            model.phase = .browsing
+            model.appeared = false
+            model.badge = nil
+            model.menuOpen = false
+            model.items = []
+            model.fullURL = nil
+            model.fullImage = nil
+        }
+        thumbs.purge()
+        // Layers and textures are released asynchronously; hand freed memory back once they're gone.
+        for delay in [0.5, 2.5] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                if self?.isVisible == false { releaseFreedMemory() }
+            }
         }
     }
 
@@ -94,7 +140,7 @@ final class SelectorController {
             ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
             panel.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
-            panel.orderOut(nil)
+            self?.teardown()
             self?.busy = false
         })
     }
@@ -459,7 +505,7 @@ final class SelectorController {
         if model.fullURL == item.url, model.fullImage != nil { done?(); return }
         let pixels = (panel.screen ?? NSScreen.withMouse).pixelSize
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let image = Media.full(item.url, kind: item.kind, covering: pixels)
+            let image = autoreleasepool { Media.full(item.url, kind: item.kind, covering: pixels) }
             DispatchQueue.main.async {
                 guard let self else { return }
                 if let image, self.model.selected?.url == item.url {
@@ -526,12 +572,7 @@ final class SelectorController {
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 panel.animator().alphaValue = 0
             }, completionHandler: { [weak self] in
-                panel.orderOut(nil)
-                withoutAnimation {
-                    self?.model.phase = .browsing
-                    self?.model.appeared = false
-                    self?.model.badge = nil
-                }
+                self?.teardown()
                 self?.busy = false
             })
         }
