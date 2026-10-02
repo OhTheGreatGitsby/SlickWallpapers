@@ -236,6 +236,7 @@ final class ThumbnailCache: ObservableObject {
             for name in existing where !keep.contains(name) && name.hasSuffix("-\(Int(size.height)).jpg") {
                 try? FileManager.default.removeItem(at: diskFolder.appendingPathComponent(name))
             }
+            releaseFreedMemory()
         }
     }
 
