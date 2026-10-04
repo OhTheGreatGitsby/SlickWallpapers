@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-VERSION="1.0.0"
+VERSION="1.0.1"
 NAME="SlickWallpapers"
 BUNDLE_ID="io.github.ohthegreatgitsby.slickwallpapers"
 MIN_MACOS="14.0"
